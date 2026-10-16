@@ -8,18 +8,20 @@ Hybrid-Guard is a phishing URL risk analyzer that combines machine learning pred
   - RF (Random Forest)
   - DT (Decision Tree)
   - DL (Deep Learning: char n-gram + neural network)
+  - LR (Logistic Regression with StandardScaler)
+  - SVM (Support Vector Machine: Linear/RBF with probability calibration)
 - Hybrid risk scoring pipeline:
   - Base model probability
   - Policy/risk adjustment
   - External enrichment checks
-- Web UI + REST API for interactive analysis
+- Web UI + REST API for interactive analysis + QR Code / Quishing Scanner
 - Benchmark script for model evaluation (accuracy, precision, recall, F1, TP/TN/FP/FN)
 
 ## Project Structure
 
 - `url_ml/`: feature engineering and DL model components
 - `webapp/`: FastAPI backend + Jinja UI
-- `train_url_model.py`: train RF/DT/DL model
+- `train_url_model.py`: train RF/DT/DL/LR/SVM model
 - `train_dl_model.py`: convenience entrypoint for DL mode
 - `debug_url_model.py`: inspect one or multiple URLs with explainable output
 - `benchmark_url_detector.py`: benchmark model or hybrid mode
@@ -53,6 +55,35 @@ Train DL:
 
 ```bash
 python train_url_model.py --data Dataset.csv --model dl --output-dir artifacts/dl_final
+```
+
+Train LR (Logistic Regression):
+
+```bash
+# Cách 1: Chạy script bash riêng
+bash train_lr_model.sh
+# hoặc: ./train_lr_model.sh Dataset.csv artifacts/lr_final
+
+# Cách 2: Chạy script Python riêng
+python train_lr_model.py --data Dataset.csv
+
+# Cách 3: Chạy qua train_url_model
+python train_url_model.py --data Dataset.csv --model lr --output-dir artifacts/lr_final
+```
+
+Train SVM (Support Vector Machine):
+
+```bash
+# Cách 1: Chạy script bash riêng (mặc định Linear SVM nhanh & calibrated)
+bash train_svm_model.sh
+# hoặc kernel RBF với giới hạn mẫu:
+bash train_svm_model.sh Dataset.csv artifacts/svm_rbf_final rbf --sample-limit 25000
+
+# Cách 2: Chạy script Python riêng
+python train_svm_model.py --data Dataset.csv
+
+# Cách 3: Chạy qua train_url_model
+python train_url_model.py --data Dataset.csv --model svm --svm-kernel linear --output-dir artifacts/svm_final
 ```
 
 ## Debug / Analyze URL

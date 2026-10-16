@@ -29,7 +29,25 @@ class ModelService:
         return features, predicted_class, base_probability
 
     def rank_features(self, features: dict, top_k: int = 8) -> list[dict]:
-        importances = getattr(self.model, "feature_importances_", [0.0] * len(self.feature_names))
+        importances = getattr(self.model, "feature_importances_", None)
+        if importances is None and hasattr(self.model, "named_steps"):
+            clf = self.model.named_steps.get("clf")
+            if hasattr(clf, "feature_importances_"):
+                importances = clf.feature_importances_
+            elif hasattr(clf, "coef_"):
+                importances = [abs(float(x)) for x in clf.coef_[0]]
+            elif hasattr(clf, "calibrated_classifiers_"):
+                coefs = []
+                for sub in clf.calibrated_classifiers_:
+                    est = getattr(sub, "estimator", None) or getattr(sub, "base_estimator", None)
+                    if est and hasattr(est, "coef_"):
+                        coefs.append([abs(float(x)) for x in est.coef_[0]])
+                if coefs:
+                    importances = [sum(col) / len(col) for col in zip(*coefs)]
+
+        if importances is None:
+            importances = [0.0] * len(self.feature_names)
+
         ranked = []
         for feature_name, importance in zip(self.feature_names, importances):
             mean = self.feature_stats[feature_name]["mean"]

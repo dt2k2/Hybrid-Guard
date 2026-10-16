@@ -24,11 +24,21 @@ DT_MODEL_PATH = _first_existing(
     ARTIFACTS_DIR / "dt_final" / "url_phishing_model.joblib",
     ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib",
 )
+LR_MODEL_PATH = _first_existing(
+    ARTIFACTS_DIR / "lr_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "lr_model" / "url_phishing_model.joblib",
+)
+SVM_MODEL_PATH = _first_existing(
+    ARTIFACTS_DIR / "svm_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "svm_model" / "url_phishing_model.joblib",
+)
 
 MODEL_PATHS = {
     "rf": MODEL_PATH,
     "dl": DL_MODEL_PATH,
     "dt": DT_MODEL_PATH,
+    "lr": LR_MODEL_PATH,
+    "svm": SVM_MODEL_PATH,
 }
 
 DEFAULT_MODEL_MODE = "rf"

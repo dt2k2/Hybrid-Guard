@@ -54,4 +54,5 @@ def create_app() -> FastAPI:
     return app
 
 
+# Initialize application instance with all detected models (rf, dt, dl, lr, svm)
 app = create_app()

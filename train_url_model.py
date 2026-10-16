@@ -5,9 +5,14 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC, LinearSVC
 from sklearn.tree import DecisionTreeClassifier
 
 from url_ml.dl_model import DLModelConfig, DeepURLClassifier
@@ -22,8 +27,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default="rf",
-        choices=["rf", "dt", "dl"],
-        help="Model type: rf = Random Forest, dt = Decision Tree, dl = deep neural URL encoder.",
+        choices=["rf", "dt", "dl", "lr", "svm"],
+        help="Model type: rf = Random Forest, dt = Decision Tree, dl = deep neural URL encoder, lr = Logistic Regression, svm = Support Vector Machine.",
     )
     parser.add_argument("--label-col", default="label", help="Target label column.")
     parser.add_argument("--test-size", type=float, default=0.2, help="Test split ratio.")
@@ -40,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dl-ngram-max", type=int, default=5, help="Maximum character n-gram size for DL model.")
     parser.add_argument("--dl-hidden-layers", default="256,128,64", help="Comma-separated hidden layer sizes for DL model.")
     parser.add_argument("--dl-max-iter", type=int, default=80, help="Max training epochs/iterations for DL model.")
+    # LR & SVM specific hyperparams
+    parser.add_argument("--lr-c", type=float, default=1.0, help="Inverse regularization strength for Logistic Regression.")
+    parser.add_argument("--lr-max-iter", type=int, default=1000, help="Maximum iterations for Logistic Regression.")
+    parser.add_argument("--svm-kernel", choices=["linear", "rbf"], default="linear", help="SVM kernel: linear or rbf.")
+    parser.add_argument("--svm-c", type=float, default=1.0, help="Regularization parameter C for SVM.")
+    parser.add_argument("--sample-limit", type=int, default=0, help="Optional maximum row limit for training (useful for slow SVM RBF).")
     return parser.parse_args()
 
 
@@ -84,11 +95,86 @@ def build_model(args: argparse.Namespace):
             n_jobs=-1,
         )
 
-    return DecisionTreeClassifier(
-        max_depth=args.max_depth,
-        random_state=args.random_state,
-        class_weight="balanced",
-    )
+    if args.model == "dt":
+        return DecisionTreeClassifier(
+            max_depth=args.max_depth,
+            random_state=args.random_state,
+            class_weight="balanced",
+        )
+
+    if args.model == "lr":
+        # Logistic Regression requires feature standardization
+        return Pipeline([
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                LogisticRegression(
+                    C=args.lr_c,
+                    max_iter=args.lr_max_iter,
+                    random_state=args.random_state,
+                    class_weight="balanced",
+                    solver="lbfgs",
+                ),
+            ),
+        ])
+
+    if args.model == "svm":
+        if args.svm_kernel == "linear":
+            # LinearSVC is fast O(N); CalibratedClassifierCV adds probability estimates
+            base_svc = LinearSVC(
+                C=args.svm_c,
+                random_state=args.random_state,
+                class_weight="balanced",
+                dual="auto",
+                max_iter=2000,
+            )
+            calibrated = CalibratedClassifierCV(estimator=base_svc, method="sigmoid", cv=3)
+            return Pipeline([
+                ("scaler", StandardScaler()),
+                ("clf", calibrated),
+            ])
+        else:
+            # Standard SVC with RBF kernel and probability estimates
+            return Pipeline([
+                ("scaler", StandardScaler()),
+                (
+                    "clf",
+                    SVC(
+                        C=args.svm_c,
+                        kernel="rbf",
+                        probability=True,
+                        random_state=args.random_state,
+                        class_weight="balanced",
+                    ),
+                ),
+            ])
+
+    raise ValueError(f"Unknown model type: {args.model}")
+
+
+def extract_feature_importances(model, feature_names: list) -> np.ndarray:
+    if hasattr(model, "feature_importances_"):
+        return np.array(model.feature_importances_, dtype=float)
+
+    if hasattr(model, "named_steps"):
+        clf = model.named_steps.get("clf")
+        if hasattr(clf, "feature_importances_"):
+            return np.array(clf.feature_importances_, dtype=float)
+        if hasattr(clf, "coef_"):
+            return np.abs(clf.coef_[0].astype(float))
+        if hasattr(clf, "calibrated_classifiers_"):
+            coefs = []
+            for sub_clf in clf.calibrated_classifiers_:
+                estimator = getattr(sub_clf, "estimator", None) or getattr(sub_clf, "base_estimator", None)
+                if estimator and hasattr(estimator, "coef_"):
+                    coefs.append(np.abs(estimator.coef_[0]))
+            if coefs:
+                return np.mean(coefs, axis=0).astype(float)
+
+    if hasattr(model, "coef_"):
+        return np.abs(model.coef_[0].astype(float))
+
+    return np.zeros(len(feature_names), dtype=float)
 
 
 def main() -> None:
@@ -103,6 +189,10 @@ def main() -> None:
 
     dataframe = ensure_features(dataframe.copy())
     dataframe = dataframe.dropna(subset=[args.label_col])
+
+    if args.sample_limit and args.sample_limit > 0 and len(dataframe) > args.sample_limit:
+        dataframe = dataframe.sample(n=args.sample_limit, random_state=args.random_state)
+        print(f"Sampled {args.sample_limit} rows from dataset for training.")
 
     X = dataframe[NUMERIC_FEATURES].astype(float)
     y = dataframe[args.label_col].astype(int)
@@ -172,10 +262,11 @@ def main() -> None:
     with metrics_path.open("w", encoding="utf-8") as file:
         json.dump(metrics, file, indent=2, ensure_ascii=False)
 
+    importances = extract_feature_importances(model, NUMERIC_FEATURES)
     importance_frame = pd.DataFrame(
         {
             "feature": NUMERIC_FEATURES,
-            "importance": getattr(model, "feature_importances_", np.zeros(len(NUMERIC_FEATURES))),
+            "importance": importances,
         }
     ).sort_values("importance", ascending=False)
     importance_frame.to_csv(importance_path, index=False)
