@@ -10,21 +10,17 @@ class ModelService:
         self.model = artifact["model"]
         self.feature_names = artifact["feature_names"]
         self.feature_stats = artifact["feature_stats"]
-        self.model_type = artifact.get("training", {}).get("model_type", "rf")
+        self.model_type = artifact.get("training", {}).get("model_type", "lgb")
 
     def predict(self, url: str) -> tuple[dict, int, float]:
         features = extract_url_features(url)
         feature_frame = pd.DataFrame([{name: features[name] for name in self.feature_names}])
 
-        if self.model_type == "dl" and hasattr(self.model, "predict_with_urls"):
-            predicted_class = int(self.model.predict_with_urls([url], feature_frame)[0])
-            base_probability = float(self.model.predict_proba_with_urls([url], feature_frame)[0][1])
+        predicted_class = int(self.model.predict(feature_frame)[0])
+        if hasattr(self.model, "predict_proba"):
+            base_probability = float(self.model.predict_proba(feature_frame)[0][1])
         else:
-            predicted_class = int(self.model.predict(feature_frame)[0])
-            if hasattr(self.model, "predict_proba"):
-                base_probability = float(self.model.predict_proba(feature_frame)[0][1])
-            else:
-                base_probability = float(predicted_class)
+            base_probability = float(predicted_class)
 
         return features, predicted_class, base_probability
 
@@ -34,16 +30,6 @@ class ModelService:
             clf = self.model.named_steps.get("clf")
             if hasattr(clf, "feature_importances_"):
                 importances = clf.feature_importances_
-            elif hasattr(clf, "coef_"):
-                importances = [abs(float(x)) for x in clf.coef_[0]]
-            elif hasattr(clf, "calibrated_classifiers_"):
-                coefs = []
-                for sub in clf.calibrated_classifiers_:
-                    est = getattr(sub, "estimator", None) or getattr(sub, "base_estimator", None)
-                    if est and hasattr(est, "coef_"):
-                        coefs.append([abs(float(x)) for x in est.coef_[0]])
-                if coefs:
-                    importances = [sum(col) / len(col) for col in zip(*coefs)]
 
         if importances is None:
             importances = [0.0] * len(self.feature_names)

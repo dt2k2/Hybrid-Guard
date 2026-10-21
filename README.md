@@ -5,11 +5,9 @@ Hybrid-Guard is a phishing URL risk analyzer that combines machine learning pred
 ## Main Features
 
 - Multi-model support:
+  - LGB (LightGBM: Gradient Boosted Decision Trees - fast, high accuracy on large datasets)
   - RF (Random Forest)
   - DT (Decision Tree)
-  - DL (Deep Learning: char n-gram + neural network)
-  - LR (Logistic Regression with StandardScaler)
-  - SVM (Support Vector Machine: Linear/RBF with probability calibration)
 - Hybrid risk scoring pipeline:
   - Base model probability
   - Policy/risk adjustment
@@ -19,10 +17,11 @@ Hybrid-Guard is a phishing URL risk analyzer that combines machine learning pred
 
 ## Project Structure
 
-- `url_ml/`: feature engineering and DL model components
+- `url_ml/`: feature engineering components
 - `webapp/`: FastAPI backend + Jinja UI
-- `train_url_model.py`: train RF/DT/DL/LR/SVM model
-- `train_dl_model.py`: convenience entrypoint for DL mode
+- `train_url_model.py`: train LightGBM / RF / DT model
+- `train_lgb_model.py`: convenience entrypoint for LightGBM mode
+- `train_all_models.py`: train & benchmark all models (LGB, RF, DT) in sequence
 - `debug_url_model.py`: inspect one or multiple URLs with explainable output
 - `benchmark_url_detector.py`: benchmark model or hybrid mode
 - `requirements.txt`: Python dependencies
@@ -39,65 +38,59 @@ pip install -r requirements.txt
 
 ## Training
 
-Train RF:
+### Train LightGBM (LGB) - Recommended
+
+```bash
+# Cách 1: Chạy script bash / bat riêng
+# Trên Windows:
+train_lgb_model.bat
+# Hoặc trên Linux / Git Bash:
+bash train_lgb_model.sh
+
+# Cách 2: Chạy script Python riêng
+python train_lgb_model.py --data Dataset.csv
+
+# Cách 3: Chạy qua train_url_model
+python train_url_model.py --data Dataset.csv --model lgb --output-dir artifacts/lgb_final
+```
+
+### Train RF (Random Forest)
 
 ```bash
 python train_url_model.py --data Dataset.csv --model rf --output-dir artifacts/rf_final
 ```
 
-Train DT:
+### Train DT (Decision Tree)
 
 ```bash
 python train_url_model.py --data Dataset.csv --model dt --max-depth 10 --output-dir artifacts/dt_final
 ```
 
-Train DL:
+### Train All Models (LGB, RF, DT) & Compare Benchmark
 
 ```bash
-python train_url_model.py --data Dataset.csv --model dl --output-dir artifacts/dl_final
-```
+# Trên Windows:
+train_all_models.bat
 
-Train LR (Logistic Regression):
+# Hoặc trên Linux / Git Bash:
+bash train_all_models.sh
 
-```bash
-# Cách 1: Chạy script bash riêng
-bash train_lr_model.sh
-# hoặc: ./train_lr_model.sh Dataset.csv artifacts/lr_final
-
-# Cách 2: Chạy script Python riêng
-python train_lr_model.py --data Dataset.csv
-
-# Cách 3: Chạy qua train_url_model
-python train_url_model.py --data Dataset.csv --model lr --output-dir artifacts/lr_final
-```
-
-Train SVM (Support Vector Machine):
-
-```bash
-# Cách 1: Chạy script bash riêng (mặc định Linear SVM nhanh & calibrated)
-bash train_svm_model.sh
-# hoặc kernel RBF với giới hạn mẫu:
-bash train_svm_model.sh Dataset.csv artifacts/svm_rbf_final rbf --sample-limit 25000
-
-# Cách 2: Chạy script Python riêng
-python train_svm_model.py --data Dataset.csv
-
-# Cách 3: Chạy qua train_url_model
-python train_url_model.py --data Dataset.csv --model svm --svm-kernel linear --output-dir artifacts/svm_final
+# Hoặc Python trực tiếp:
+python train_all_models.py
 ```
 
 ## Debug / Analyze URL
 
-Single URL (RF model artifact):
+Single URL (LightGBM model artifact):
 
 ```bash
-python debug_url_model.py --url "github.com" --model-path artifacts/rf_final/url_phishing_model.joblib --timeout 8 --json
+python debug_url_model.py --url "github.com" --model-path artifacts/lgb_final/url_phishing_model.joblib --timeout 8 --json
 ```
 
 Fresh check without relying on previous cache:
 
 ```bash
-python debug_url_model.py --url "https://example.com" --model-path artifacts/rf_final/url_phishing_model.joblib --force-enrichment --cache-file artifacts/tmp_cache_run.json --json
+python debug_url_model.py --url "https://example.com" --model-path artifacts/lgb_final/url_phishing_model.joblib --force-enrichment --cache-file artifacts/tmp_cache_run.json --json
 ```
 
 ## Run API + Web UI
@@ -115,7 +108,7 @@ Open:
 Model-only benchmark:
 
 ```bash
-python benchmark_url_detector.py --data Dataset.csv --mode ml --model-path artifacts/rf_final/url_phishing_model.joblib --output-dir artifacts/benchmark_rf
+python benchmark_url_detector.py --data Dataset.csv --mode ml --model-path artifacts/lgb_final/url_phishing_model.joblib --output-dir artifacts/benchmark_lgb
 ```
 
 Hybrid benchmark:
@@ -130,7 +123,7 @@ This repository is source-focused:
 
 - Included: source code, configs, scripts
 - Excluded by `.gitignore`:
-  - local dataset file (`Dataset.csv`)
+  - local dataset file (`Dataset.csv` / `Dataset.csv.csv`)
   - generated artifacts/reports/benchmarks (`artifacts/`)
   - virtual environment and caches
 

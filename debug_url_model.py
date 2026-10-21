@@ -65,7 +65,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Predict and debug whether a URL is benign or malicious.",
     )
-    parser.add_argument("--model-path", default="artifacts/url_phishing_model.joblib", help="Path to the trained model artifact.")
+    default_model = "artifacts/lgb_final/url_phishing_model.joblib" if Path("artifacts/lgb_final/url_phishing_model.joblib").exists() else "artifacts/url_phishing_model.joblib"
+    parser.add_argument("--model-path", default=default_model, help="Path to the trained model artifact.")
     parser.add_argument("--url", help="Single URL to inspect.")
     parser.add_argument("--url-file", help="Text file containing one URL per line.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
@@ -680,18 +681,14 @@ def predict_url(url: str, artifact: dict, args: argparse.Namespace) -> dict:
     features = extract_url_features(url)
     feature_names = artifact["feature_names"]
     model = artifact["model"]
-    model_type = artifact.get("training", {}).get("model_type", "rf")
+    model_type = artifact.get("training", {}).get("model_type", "lgb")
     feature_frame = pd.DataFrame([{name: features[name] for name in feature_names}])
 
-    if model_type == "dl" and hasattr(model, "predict_with_urls"):
-        predicted_class = int(model.predict_with_urls([url], feature_frame)[0])
-        base_probability = float(model.predict_proba_with_urls([url], feature_frame)[0][1])
+    predicted_class = int(model.predict(feature_frame)[0])
+    if hasattr(model, "predict_proba"):
+        base_probability = float(model.predict_proba(feature_frame)[0][1])
     else:
-        predicted_class = int(model.predict(feature_frame)[0])
-        if hasattr(model, "predict_proba"):
-            base_probability = float(model.predict_proba(feature_frame)[0][1])
-        else:
-            base_probability = float(predicted_class)
+        base_probability = float(predicted_class)
 
     tld = str(features.get("tld", "")).lower().strip(".")
     trusted_tld = is_trusted_tld(tld)

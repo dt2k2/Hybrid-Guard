@@ -17,7 +17,10 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
 fi
 
 DATA_PATH="Dataset.csv"
-OUTPUT_DIR="artifacts/lr_final"
+if [ ! -f "$DATA_PATH" ] && [ -f "Dataset.csv.csv" ]; then
+    DATA_PATH="Dataset.csv.csv"
+fi
+OUTPUT_DIR="artifacts/lgb_final"
 
 if [[ -n "$1" && "$1" != -* ]]; then
     DATA_PATH="$1"
@@ -30,18 +33,18 @@ if [[ -n "$1" && "$1" != -* ]]; then
 fi
 
 echo "====================================================="
-echo " Training Logistic Regression (LR) Model"
+echo " Training LightGBM (LGB) Model"
 echo " Dataset:    $DATA_PATH"
 echo " Output dir: $OUTPUT_DIR"
 echo "====================================================="
 
 "$PYTHON_BIN" train_url_model.py \
     --data "$DATA_PATH" \
-    --model lr \
+    --model lgb \
     --output-dir "$OUTPUT_DIR" \
     "$@"
 
 echo "====================================================="
-echo " LR Training Completed!"
+echo " LightGBM Training Completed!"
 echo " Artifacts saved in: $OUTPUT_DIR"
 echo "====================================================="

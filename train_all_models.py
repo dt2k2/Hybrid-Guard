@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Master script to train and benchmark all URL phishing detection models in sequence:
+"""Master script to train and benchmark URL phishing detection models in sequence:
 
-- LR (Logistic Regression)
-- SVM (Support Vector Machine)
-- DT (Decision Tree)
+- LGB (LightGBM Gradient Boosting)
 - RF (Random Forest)
-- DL (Deep Learning URL Classifier)
+- DT (Decision Tree)
 """
 
 import argparse
@@ -28,32 +26,13 @@ import pandas as pd
 
 MODELS_CONFIG = [
     {
-        "name": "lr",
-        "display": "Logistic Regression (LR)",
-        "output_dir": "artifacts/lr_final",
+        "name": "lgb",
+        "display": "LightGBM (Gradient Boosting)",
+        "output_dir": "artifacts/lgb_final",
         "cmd": [
-            "--model", "lr",
-            "--output-dir", "artifacts/lr_final",
-        ],
-    },
-    {
-        "name": "svm",
-        "display": "Support Vector Machine (Linear SVM)",
-        "output_dir": "artifacts/svm_final",
-        "cmd": [
-            "--model", "svm",
-            "--svm-kernel", "linear",
-            "--output-dir", "artifacts/svm_final",
-        ],
-    },
-    {
-        "name": "dt",
-        "display": "Decision Tree (DT)",
-        "output_dir": "artifacts/dt_final",
-        "cmd": [
-            "--model", "dt",
-            "--max-depth", "10",
-            "--output-dir", "artifacts/dt_final",
+            "--model", "lgb",
+            "--n-estimators", "300",
+            "--output-dir", "artifacts/lgb_final",
         ],
     },
     {
@@ -67,12 +46,13 @@ MODELS_CONFIG = [
         ],
     },
     {
-        "name": "dl",
-        "display": "Deep Learning (DL Neural Encoder)",
-        "output_dir": "artifacts/dl_final",
+        "name": "dt",
+        "display": "Decision Tree (DT)",
+        "output_dir": "artifacts/dt_final",
         "cmd": [
-            "--model", "dl",
-            "--output-dir", "artifacts/dl_final",
+            "--model", "dt",
+            "--max-depth", "10",
+            "--output-dir", "artifacts/dt_final",
         ],
     },
 ]
@@ -80,15 +60,15 @@ MODELS_CONFIG = [
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train and benchmark all models in Hybrid-Guard (LR, SVM, DT, RF, DL).",
+        description="Train and benchmark models in Hybrid-Guard (LGB, RF, DT).",
     )
     parser.add_argument("--data", default="Dataset.csv", help="Path to the dataset CSV.")
     parser.add_argument(
         "--models",
         nargs="+",
-        default=["lr", "svm", "dt", "rf", "dl"],
-        choices=["lr", "svm", "dt", "rf", "dl"],
-        help="List of models to run (default: lr svm dt rf dl).",
+        default=["lgb", "rf", "dt"],
+        choices=["lgb", "rf", "dt"],
+        help="List of models to run (default: lgb rf dt).",
     )
     parser.add_argument(
         "--skip-existing",
@@ -121,10 +101,21 @@ def format_duration(seconds: float) -> str:
     return f"{m}m {s}s"
 
 
+def resolve_data_path(data_arg: str) -> Path:
+    data_path = Path(data_arg)
+    if data_path.exists():
+        return data_path
+    if (data_path.parent / f"{data_path.name}.csv").exists():
+        return data_path.parent / f"{data_path.name}.csv"
+    if data_arg == "Dataset.csv" and Path("Dataset.csv.csv").exists():
+        return Path("Dataset.csv.csv")
+    return data_path
+
+
 def main():
     args = parse_args()
     python_bin = get_python_executable()
-    data_path = Path(args.data)
+    data_path = resolve_data_path(args.data)
 
     if not data_path.exists():
         print(f"[ERROR] Dataset file not found: {data_path}")
@@ -174,10 +165,10 @@ def main():
             try:
                 with metrics_file.open("r", encoding="utf-8") as f:
                     metrics = json.load(f)
-                
+
                 acc = metrics.get("accuracy", 0.0)
                 f1 = metrics.get("f1", 0.0)
-                
+
                 # Extract precision/recall for class 1 from confusion matrix if available
                 cm = metrics.get("confusion_matrix", [[0, 0], [0, 0]])
                 tn, fp = cm[0][0], cm[0][1]
@@ -211,7 +202,7 @@ def main():
         df_summary = pd.DataFrame(results)
         # Display clean text table
         print(df_summary[["Model", "Accuracy", "F1-Score", "Precision (Phish)", "Recall (Phish)", "Train Time"]].to_string(index=False))
-        
+
         # Save CSV summary
         summary_path = Path("artifacts/all_models_summary.csv")
         summary_path.parent.mkdir(parents=True, exist_ok=True)

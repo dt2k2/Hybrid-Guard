@@ -37,13 +37,10 @@
                         <label class="field-label" for="modeSelect">Mô Hình</label>
                         <select id="modeSelect" class="mode-select" aria-label="Chọn mode mô hình">
                             {% for mode in available_modes %}
-                            <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>{{ mode|upper }}{%
-                                if
-                                mode|lower == 'dl' %} (Testing){% endif %}
-                            </option>
+                            <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>{{ mode|upper }}</option>
                             {% endfor %}
                         </select>
-                        <div class="field-help">RF/DT (cây), DL (neural), LR &amp; SVM (chuẩn hóa biên).</div>
+                        <div class="field-help">LGB (LightGBM boosting), RF (Random Forest), DT (Decision Tree).</div>
                     </div>
 
                     <div class="field">
