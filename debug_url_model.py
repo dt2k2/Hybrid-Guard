@@ -15,6 +15,14 @@ import joblib
 import pandas as pd
 
 from url_ml.feature_engineering import extract_url_features, normalize_url
+from webapp.app.config import KNOWN_LEGIT_LOGIN_DOMAINS
+
+
+def is_known_legit_domain(hostname: str) -> bool:
+    host = (hostname or "").lower().strip(".")
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in KNOWN_LEGIT_LOGIN_DOMAINS)
 
 
 SUSPICIOUS_KEYWORDS = {
@@ -589,6 +597,18 @@ def compute_enrichment_adjustment(features: dict, external_checks: dict) -> tupl
             adjustment -= 0.08
             reasons.append("Domain da ton tai lau nam, giam muc do nghi ngo.")
 
+    hostname = (features.get("dom", "") or "").lower().strip(".")
+    known_legit = is_known_legit_domain(hostname)
+    trusted_transport = bool(dns_info.get("resolved")) and bool(ssl_info.get("available")) and not bool(ssl_info.get("expired"))
+    if known_legit and trusted_transport:
+        adjustment -= 0.10
+        reasons.append("Domain thuoc nen tang uy tin va co SSL/DNS on dinh, giam diem nghi ngo.")
+
+    is_clean_root = int(features.get("path_len", 0)) <= 1 and int(features.get("query_len", 0)) == 0 and int(features.get("is_ip", 0)) == 0
+    if is_clean_root and trusted_transport and tld not in RISKY_TLDS:
+        adjustment -= 0.15
+        reasons.append("Hieu chinh link trang chu tran: ket noi SSL/DNS hop le, khong co dau hieu bat thuong.")
+
     http_info = external_checks.get("http", {})
     keyword_hits = http_info.get("keyword_hits", [])
     if keyword_hits:
@@ -765,6 +785,33 @@ def predict_url(url: str, artifact: dict, args: argparse.Namespace) -> dict:
             args.suspicious_threshold,
         )
         fusion_reasons = enrichment.get("adjustment_reasons", [])
+
+    # Áp dụng guardrail tương tự như trong webapp
+    hostname = (urlparse(normalize_url(url)).hostname or "").lower().strip(".")
+    known_legit = is_known_legit_domain(hostname)
+    dns_info = enrichment.get("checks", {}).get("dns", {})
+    ssl_info = enrichment.get("checks", {}).get("ssl", {})
+    http_info = enrichment.get("checks", {}).get("http", {})
+    strong_transport = bool(dns_info.get("resolved")) and bool(ssl_info.get("available")) and not bool(ssl_info.get("expired")) and features.get("is_https") == 1
+    good_http_status = http_info.get("status_code") in {200, 201, 204, 301, 302}
+    is_clean_root = int(features.get("path_len", 0)) <= 1 and int(features.get("query_len", 0)) == 0 and int(features.get("is_ip", 0)) == 0
+
+    if known_legit and strong_transport:
+        cap = 0.05 if good_http_status else 0.08
+        if final_probability > cap:
+            final_probability = cap
+            fusion_reasons.insert(0, f"Trust-guardrail: domain uy tin da xac thuc ({hostname}), gioi han rui ro toi da {int(cap*100)}%.")
+    elif strong_transport and good_http_status and is_clean_root and tld not in RISKY_TLDS:
+        cap = 0.15
+        if final_probability > cap:
+            final_probability = cap
+            fusion_reasons.insert(0, "Root-domain guardrail: trang chu co SSL/DNS chuan, gioi han rui ro toi da 15%.")
+
+    final_prediction = classify_probability(
+        final_probability,
+        args.malicious_threshold,
+        args.suspicious_threshold,
+    )
 
     return {
         "url": url,
