@@ -41,7 +41,8 @@ MODELS_CONFIG = [
         "output_dir": "artifacts/rf_final",
         "cmd": [
             "--model", "rf",
-            "--n-estimators", "300",
+            "--n-estimators", "100",
+            "--max-depth", "25",
             "--output-dir", "artifacts/rf_final",
         ],
     },
@@ -51,7 +52,7 @@ MODELS_CONFIG = [
         "output_dir": "artifacts/dt_final",
         "cmd": [
             "--model", "dt",
-            "--max-depth", "10",
+            "--max-depth", "20",
             "--output-dir", "artifacts/dt_final",
         ],
     },
